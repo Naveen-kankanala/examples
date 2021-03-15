@@ -1,0 +1,64 @@
+# Node.js
+# Build a general Node.js project with npm.
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
+
+trigger:
+- main
+
+pool:
+  vmImage: windows-2019
+
+steps:
+- task: NodeTool@0
+  inputs:
+    versionSpec: '10.x'
+  displayName: 'Install Node.js'
+
+- script: |
+    npm install
+    npm run build
+  displayName: 'npm install and build'
+
+# FORTIFY TASK
+- task: PowerShell@2
+  displayName: 'Download fortify ScanCentral Client'
+  inputs:
+    targetType: 'inline'
+    script: |
+      New-Item -ItemType directory -Path c:\agent
+      
+      $url = "https://fort0app01p.bv.com:8444/ssc/downloads/Fortify_ScanCentral_Client.zip"
+      $output = "c:\agent\Fortify_ScanCentral_Client.zip"
+      
+      $wc = New-Object System.Net.WebClient
+      $wc.DownloadFile($url, $output)
+
+- task: ExtractFiles@1
+  inputs:
+    archiveFilePatterns: 'c:\agent\Fortify_ScanCentral_Client.zip'
+    destinationFolder: 'c:\agent\Fortify_ScanCentral_Client'
+    cleanDestinationFolder: true
+
+- task: Bash@3
+  displayName: 'Configuring ScanCentral Client'
+  inputs:
+    targetType: 'inline'
+    script: |
+      cd c:/agent/Fortify_ScanCentral_Client/core
+      mkdir config && cd config
+      echo "client_auth_token=client123token" > client.properties
+
+- task: PowerShell@2
+  displayName: 'Setting the path for ScanCentral Client'
+  inputs:
+    targetType: 'inline'
+    script: 'Write-Host "##vso[task.prependpath]c:\agent\Fortify_ScanCentral_Client\bin\"'
+
+- task: CmdLine@2
+  displayName: 'Offloading Scanning and Translation'
+  inputs:
+    script: 'scancentral.bat -url https://fort0app01p.bv.com:8443/scancentral-ctrl/ start -bt none -upload --application "Test" --application-version "1" -uptoken cf80d55c-31b9-4650-86aa-819a93b42d01'
+  enabled: true
+
+# END OF FORTIFY TASK
